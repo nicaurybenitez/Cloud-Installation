@@ -57,25 +57,32 @@ apt install openjdk-11-jdk -y
 #######################################
 apt-get install -y openntpd openssh-server sudo vim htop tar intel-microcode bridge-utils mysql-server
 
+# Función para obtener la IP principal
+get_primary_ip() {
+    local interface=$(ip route | awk '/default/ {print $5; exit}')
+    if [ -z "$interface" ]; then
+        echo "No se pudo determinar la interfaz principal." >&2
+        return 1
+    fi
+    local ip=$(ip -4 addr show $interface | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+    if [ -z "$ip" ]; then
+        echo "No se pudo obtener la IP para la interfaz $interface." >&2
+        return 1
+    fi
+    echo $ip
+}
 
-GATEWAY=$(ip r | awk '/default/ {print $3}')
-IP=$(ip r | awk '/src/ {print $9; exit}')
-ADAPTER=$(ip link | awk -F: '$0 !~ "lo|vir|wl|^[^0-9]"{print $2;getline}')
-
-HOSTS_CONTENT="127.0.0.1\tlocalhost\n$IP\tcloud.ngi.local\tcloud"
-apt install bridge-utils
-
-
-# Check if the bridge already exists
-if ! brctl show | grep -q 'br0'; then
-    brctl addbr br0
+# Obtener la IP y otros datos de red
+IP=$(get_primary_ip)
+if [ $? -ne 0 ]; then
+    echo "Error al obtener la IP principal. Saliendo del script."
+    exit 1
 fi
 
-# Check if the interface is already added to the bridge
-if ! brctl show br0 | grep -q "$ADAPTER"; then
-    brctl addif br0 $ADAPTER
-fi
+GATEWAY=$(ip route | awk '/default/ {print $3}')
+ADAPTER=$(ip route | awk '/default/ {print $5}')
 
+# Crear el contenido de netplan
 NETPLAN_CONTENT="network:
     version: 2
     renderer: networkd
@@ -103,16 +110,23 @@ if [ -z "$NETPLAN_FILE" ]; then
     NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
 fi
 
-# Verificar la gateway actual
-CURRENT_GATEWAY=$(grep -oP '(?<=gateway4: )[^ ]*' $NETPLAN_FILE 2>/dev/null || echo "")
+# Hacer backup del archivo actual
+cp $NETPLAN_FILE ${NETPLAN_FILE}.bak
 
-if [ "$CURRENT_GATEWAY" != "$GATEWAY" ] || [ -z "$CURRENT_GATEWAY" ]
-then
-    echo "Actualizando configuración de netplan..."
-    cp $NETPLAN_FILE ${NETPLAN_FILE}.bak
-    echo "$NETPLAN_CONTENT" | sudo tee $NETPLAN_FILE
+# Escribir la nueva configuración
+echo "$NETPLAN_CONTENT" | sudo tee $NETPLAN_FILE
+
+# Aplicar la configuración
+sudo netplan apply
+
+# Verificar la conectividad
+if ping -c 4 8.8.8.8 &> /dev/null; then
+    echo "La configuración de red se ha aplicado correctamente y hay conexión a Internet."
 else
-    echo "La configuración de netplan ya está actualizada."
+    echo "Error: No se pudo establecer conexión a Internet. Restaurando la configuración anterior."
+    mv ${NETPLAN_FILE}.bak $NETPLAN_FILE
+    sudo netplan apply
+    exit 1
 fi
 
 netplan apply
