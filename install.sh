@@ -39,9 +39,6 @@ apt update && apt upgrade -y
 # Instalar OpenJDK y prerrequisitos
 apt install -y openjdk-11-jdk openntpd openssh-server uuid sudo vim htop tar intel-microcode bridge-utils mysql-server
 
-# Instalar KVM y agente de CloudStack
-apt install -y qemu-kvm cloudstack-agent
-
 # Función para obtener la IP principal y la interfaz
 get_network_info() {
     INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
@@ -162,6 +159,9 @@ mkdir -p /mnt/primary /mnt/secondary
 mount -t nfs localhost:/export/primary /mnt/primary
 mount -t nfs localhost:/export/secondary /mnt/secondary
 
+# Instalar KVM y agente de CloudStack
+apt install -y qemu-kvm cloudstack-agent
+
 # Configurar KVM
 sed -i -e 's/\#vnc_listen.*$/vnc_listen = "0.0.0.0"/g' /etc/libvirt/qemu.conf
 
@@ -171,6 +171,11 @@ echo 'listen_tcp=1' >> /etc/libvirt/libvirtd.conf
 echo 'tcp_port = "16509"' >> /etc/libvirt/libvirtd.conf
 echo 'mdns_adv = 0' >> /etc/libvirt/libvirtd.conf
 echo 'auth_tcp = "none"' >> /etc/libvirt/libvirtd.conf
+
+# Generar y configurar UUID único para libvirt
+apt-get install -y uuid
+UUID=$(uuid)
+echo "host_uuid = \"$UUID\"" >> /etc/libvirt/libvirtd.conf
 
 # Configurar libvirtd para iniciar en modo de escucha
 if [ "$MAJOR_VERSION" = "22" ]; then
