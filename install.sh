@@ -37,7 +37,10 @@ echo "##########################################################################
 apt update && apt upgrade -y
 
 # Instalar OpenJDK y prerrequisitos
-apt install -y openjdk-11-jdk openntpd openssh-server sudo vim htop tar intel-microcode bridge-utils mysql-server
+apt install -y openjdk-11-jdk openntpd openssh-server uuid sudo vim htop tar intel-microcode bridge-utils mysql-server
+
+# Instalar KVM y agente de CloudStack
+apt install -y qemu-kvm cloudstack-agent
 
 # Función para obtener la IP principal y la interfaz
 get_network_info() {
@@ -73,12 +76,18 @@ network:
   ethernets:
     $INTERFACE:
       dhcp4: no
+  bridges:
+    cloudbr0:
+      interfaces: [$INTERFACE]
       addresses: [$IP/24]
       routes:
         - to: default
           via: $GATEWAY
       nameservers:
         addresses: [8.8.8.8, 8.8.4.4]
+      parameters:
+        stp: false
+        forward-delay: 0
 EOF
 
 # Aplicar la configuración
@@ -127,16 +136,22 @@ systemctl restart mysql
 
 # Configurar MySQL para CloudStack
 mysql -u root << EOF
-ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'dewansnehra';
+ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '1qazxsw2';
 FLUSH PRIVILEGES;
 EOF
 
 # Configurar CloudStack
-cloudstack-setup-databases devil:devil@localhost --deploy-as=root:dewansnehra
+cloudstack-setup-databases ezzy:ezzy@localhost --deploy-as=root:1qazxsw2
 cloudstack-setup-management
 
 # Configurar firewall
 ufw allow mysql
+ufw allow proto tcp from any to any port 22
+ufw allow proto tcp from any to any port 1798
+ufw allow proto tcp from any to any port 16509
+ufw allow proto tcp from any to any port 16514
+ufw allow proto tcp from any to any port 5900:6100
+ufw allow proto tcp from any to any port 49152:49216
 
 # Configurar NFS
 mkdir -p /export/primary /export/secondary
@@ -146,6 +161,26 @@ systemctl restart nfs-kernel-server
 mkdir -p /mnt/primary /mnt/secondary
 mount -t nfs localhost:/export/primary /mnt/primary
 mount -t nfs localhost:/export/secondary /mnt/secondary
+
+# Configurar KVM
+sed -i -e 's/\#vnc_listen.*$/vnc_listen = "0.0.0.0"/g' /etc/libvirt/qemu.conf
+
+# Configurar libvirtd
+echo 'listen_tls=0' >> /etc/libvirt/libvirtd.conf
+echo 'listen_tcp=1' >> /etc/libvirt/libvirtd.conf
+echo 'tcp_port = "16509"' >> /etc/libvirt/libvirtd.conf
+echo 'mdns_adv = 0' >> /etc/libvirt/libvirtd.conf
+echo 'auth_tcp = "none"' >> /etc/libvirt/libvirtd.conf
+
+# Configurar libvirtd para iniciar en modo de escucha
+if [ "$MAJOR_VERSION" = "22" ]; then
+    echo LIBVIRTD_ARGS=\"--listen\" >> /etc/default/libvirtd
+else
+    sed -i -e 's/.*libvirtd_opts.*/libvirtd_opts="-l"/' /etc/default/libvirtd
+fi
+
+# Reiniciar libvirtd
+systemctl restart libvirtd
 
 echo "
 ###################################################################################
