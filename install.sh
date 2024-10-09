@@ -95,18 +95,24 @@ NETPLAN_CONTENT="network:
             nameservers:
                 addresses: [8.8.8.8, 8.8.4.4]"
 
-CURRENT_GATEWAY=$(grep -oP '(?<=gateway4: )[^ ]*' /etc/netplan/01-network-manager-all.yaml)
+# Encontrar el archivo de configuración de netplan
+NETPLAN_FILE=$(find /etc/netplan -name "*.yaml" | head -n 1)
 
-if ! grep -Fxq "$HOSTS_CONTENT" /etc/hosts
-then
-    echo -e "$HOSTS_CONTENT" | sudo tee /etc/hosts
+if [ -z "$NETPLAN_FILE" ]; then
+    echo "No se encontró archivo de configuración de netplan. Creando uno nuevo."
+    NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
 fi
 
-# El resto del script permanece igual
-if [ "$CURRENT_GATEWAY" != "$GATEWAY" ]
+# Verificar la gateway actual
+CURRENT_GATEWAY=$(grep -oP '(?<=gateway4: )[^ ]*' $NETPLAN_FILE 2>/dev/null || echo "")
+
+if [ "$CURRENT_GATEWAY" != "$GATEWAY" ] || [ -z "$CURRENT_GATEWAY" ]
 then
-    cp /etc/netplan/01-network-manager-all.yaml /etc/netplan/01-network-manager-all.yaml.bak
-    echo "$NETPLAN_CONTENT" | sudo tee /etc/netplan/01-network-manager-all.yaml
+    echo "Actualizando configuración de netplan..."
+    cp $NETPLAN_FILE ${NETPLAN_FILE}.bak
+    echo "$NETPLAN_CONTENT" | sudo tee $NETPLAN_FILE
+else
+    echo "La configuración de netplan ya está actualizada."
 fi
 
 netplan apply
