@@ -11,8 +11,8 @@ if [ "$EUID" -ne 0 ]
 fi
 
 UBUNTU_VERSION=$(lsb_release -rs)
-REQUIRED_VERSION1="22."
-REQUIRED_VERSION2="20."
+REQUIRED_VERSION1="24."
+REQUIRED_VERSION2="22."
 
 if (( $(echo "$UBUNTU_VERSION < $REQUIRED_VERSION1" | bc -l) )) && [[ "$UBUNTU_VERSION" != $REQUIRED_VERSION2* ]]
 then
@@ -25,31 +25,44 @@ then
     exit
 fi
 
-echo -e "
- ██████╗ ███████╗██╗    ██╗ █████╗ ███╗   ██╗███████╗   ███╗   ██╗███████╗██╗  ██╗██████╗  █████╗ 
- ██╔══██╗██╔════╝██║    ██║██╔══██╗████╗  ██║██╔════╝   ████╗  ██║██╔════╝██║  ██║██╔══██╗██╔══██╗ 
- ██║  ██║█████╗  ██║ █╗ ██║███████║██╔██╗ ██║███████╗   ██╔██╗ ██║█████╗  ███████║██████╔╝███████║ 
- ██║  ██║██╔══╝  ██║███╗██║██╔══██║██║╚██╗██║╚════██║   ██║╚██╗██║██╔══╝  ██╔══██║██╔══██╗██╔══██║
- ██████╔╝███████╗╚███╔███╔╝██║  ██║██║ ╚████║███████║   ██║ ╚████║███████╗██║  ██║██║  ██║██║  ██║ 
- ╚═════╝ ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝   ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝  
- "
-echo -e "
-###################################################################################
-####           This script is written by Dewans Nehra.                        ####
-####           You can contact me at https://dewansnehra.xyz                  ####
-####           This script is written for Ubuntu 22.04                        ####
-####           This script will install Cloudstack 4.18                       ####
-###################################################################################
+echo -e "\033[1;34m"  # Cambia el color a azul brillante para mayor visibilidad
+
+echo "
+ ██████╗██╗      ██████╗ ██╗   ██╗██████╗      ██████╗ ███╗   ██╗██████╗ ██████╗ ███████╗███╗   ███╗██╗███████╗███████╗
+██╔════╝██║     ██╔═══██╗██║   ██║██╔══██╗    ██╔═══██╗████╗  ██║██╔══██╗██╔══██╗██╔════╝████╗ ████║██║██╔════╝██╔════╝
+██║     ██║     ██║   ██║██║   ██║██║  ██║    ██║   ██║██╔██╗ ██║██████╔╝██████╔╝█████╗  ██╔████╔██║██║███████╗█████╗  
+██║     ██║     ██║   ██║██║   ██║██║  ██║    ██║   ██║██║╚██╗██║██╔═══╝ ██╔══██╗██╔══╝  ██║╚██╔╝██║██║╚════██║██╔══╝  
+╚██████╗███████╗╚██████╔╝╚██████╔╝██████╔╝    ╚██████╔╝██║ ╚████║██║     ██║  ██║███████╗██║ ╚═╝ ██║██║███████║███████╗
+ ╚═════╝╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝      ╚═════╝ ╚═╝  ╚═══╝╚═╝     ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝╚══════╝╚══════╝
 "
 
+echo -e "\033[0m"  # Restablece el color
+###################################################################################
+####           This script is written for Ubuntu 24.04                        ####
+####           This script will install Cloudstack 4.19                       ####
+###################################################################################
+
+
 apt update && apt upgrade -y
+
+#######################################
+#installing openJDK
+#######################################
+apt install openjdk-11-jdk -y
+
+#######################################
+
+#######################################
+# installing prerequisites for cloudstack
+#######################################
+apt-get install -y openntpd openssh-server sudo vim htop tar intel-microcode bridge-utils mysql-server
 
 
 GATEWAY=$(ip r | awk '/default/ {print $3}')
 IP=$(ip r | awk '/src/ {print $9}')
 ADAPTER=$(ip link | awk -F: '$0 !~ "lo|vir|wl|^[^0-9]"{print $2;getline}')
 
-HOSTS_CONTENT="127.0.0.1\tlocalhost\n$IP\tdevil.dewansnehra.xyz\tdevil"
+HOSTS_CONTENT="127.0.0.1\tlocalhost\n$IP\tcloud.ngi.local\tcloud"
 apt install bridge-utils
 
 
@@ -76,7 +89,9 @@ NETPLAN_CONTENT="network:
             dhcp4: no
             dhcp6: no
             addresses: [$IP/24]
-            gateway4: $GATEWAY
+            routes:
+              - to: default
+                via: $GATEWAY
             nameservers:
                 addresses: [8.8.8.8, 8.8.4.4]"
 
@@ -87,6 +102,7 @@ then
     echo -e "$HOSTS_CONTENT" | sudo tee /etc/hosts
 fi
 
+# El resto del script permanece igual
 if [ "$CURRENT_GATEWAY" != "$GATEWAY" ]
 then
     cp /etc/netplan/01-network-manager-all.yaml /etc/netplan/01-network-manager-all.yaml.bak
@@ -96,25 +112,23 @@ fi
 netplan apply
 netplan apply
 systemctl restart NetworkManager
-hostnamectl set-hostname devil.dewansnehra.xyz
-
+hostnamectl set-hostname cloud.ngi.local
 
 
 apt-get install -y openntpd openssh-server sudo vim htop tar intel-microcode bridge-utils mysql-server
 
 UBUNTU_VERSION=$(lsb_release -rs)
 
-if [[ "$UBUNTU_VERSION" == "20."* ]]
+if [[ "$UBUNTU_VERSION" == "24."* ]]
 then
-    echo deb [arch=amd64] http://download.cloudstack.org/ubuntu focal 4.18  > /etc/apt/sources.list.d/cloudstack.list
+    echo deb [arch=amd64] http://download.cloudstack.org/ubuntu noble 4.19 > /etc/apt/sources.list.d/cloudstack.list
 elif [[ "$UBUNTU_VERSION" == "22."* ]]
 then
-    echo deb [arch=amd64] http://download.cloudstack.org/ubuntu jammy 4.18  > /etc/apt/sources.list.d/cloudstack.list
+    echo deb [arch=amd64] http://download.cloudstack.org/ubuntu jammy 4.19 > /etc/apt/sources.list.d/cloudstack.list
 else
-    echo "Unsupported Ubuntu version. This script supports Ubuntu 20.xx and 22.xx only."
+    echo "Unsupported Ubuntu version. This script supports Ubuntu 22.04 and 24.04 only."
     exit 1
 fi
-
 
 wget -O - http://download.cloudstack.org/release.asc|gpg --dearmor > cloudstack-archive-keyring.gpg
 
@@ -169,7 +183,6 @@ mount -t nfs localhost:/export/secondary /mnt/secondary
 echo "
 ###################################################################################
 ####           Thank you for using this script.                                ####
-####       Dewans Nehra -  https://dewansnehra.xyz                             #### 
 ###################################################################################
 "
 
@@ -189,6 +202,5 @@ echo "
 ####           to access the pannel.                                           ####
 ####           Username : admin                                                ####
 ####           Password : password                                             ####
-####           Dewans Nehra -  https://dewansnehra.xyz                         ####
 ###################################################################################
 "

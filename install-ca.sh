@@ -91,7 +91,7 @@ fi
 log_and_run "netplan apply"
 log_and_run "netplan apply"
 log_and_run "systemctl restart NetworkManager"
-log_and_run "hostnamectl set-hostname devil.dewansnehra.xyz"
+log_and_run "hostnamectl set-hostname cloud.ngi.local"
 
 
 
