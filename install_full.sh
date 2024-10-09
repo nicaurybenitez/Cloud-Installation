@@ -33,11 +33,41 @@ echo "####           This script is written for Ubuntu 22.04 and 24.04          
 echo "####           This script will install Cloudstack 4.19                        ####"
 echo "###################################################################################"
 
+# Función para seleccionar el tipo de instalación
+select_installation_type() {
+    echo "Por favor, seleccione el tipo de instalación:"
+    echo "1) Solo host"
+    echo "2) Host + Management"
+    read -p "Ingrese su elección (1 o 2): " choice
+    case $choice in
+        1) 
+            echo "Ha seleccionado instalar solo el host."
+            INSTALL_TYPE="host"
+            ;;
+        2) 
+            echo "Ha seleccionado instalar host + management."
+            INSTALL_TYPE="full"
+            ;;
+        *) 
+            echo "Opción no válida. Saliendo."
+            exit 1
+            ;;
+    esac
+}
+
+# Llamar a la función de selección
+select_installation_type
+
 # Actualizar el sistema
 apt update && apt upgrade -y
 
 # Instalar OpenJDK y prerrequisitos
-apt install -y openjdk-11-jdk openntpd openssh-server uuid sudo vim htop tar intel-microcode bridge-utils mysql-server
+apt install -y openjdk-11-jdk openntpd openssh-server uuid sudo vim htop tar intel-microcode bridge-utils
+
+# Instalar MySQL solo si es instalación completa
+if [ "$INSTALL_TYPE" = "full" ]; then
+    apt install -y mysql-server
+fi
 
 # Función para obtener la IP principal y la interfaz
 get_network_info() {
@@ -113,10 +143,12 @@ wget -O - http://download.cloudstack.org/release.asc | gpg --dearmor > /etc/apt/
 
 # Actualizar e instalar CloudStack
 apt update && apt upgrade -y
-apt-get install -y cloudstack-management cloudstack-usage
 
-# Configurar MySQL
-cat >> /etc/mysql/mysql.conf.d/mysqld.cnf << EOF
+if [ "$INSTALL_TYPE" = "full" ]; then
+    apt-get install -y cloudstack-management cloudstack-usage
+
+    # Configurar MySQL
+    cat >> /etc/mysql/mysql.conf.d/mysqld.cnf << EOF
 
 server_id = 1
 sql-mode="STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION,ERROR_FOR_DIVISION_BY_ZERO,NO_ZERO_DATE,NO_ZERO_IN_DATE,NO_ENGINE_SUBSTITUTION"
@@ -127,19 +159,20 @@ log-bin=mysql-bin
 binlog-format = 'ROW'
 EOF
 
-echo "[mysqld]" > /etc/mysql/mysql.conf.d/cloudstack.cnf
+    echo "[mysqld]" > /etc/mysql/mysql.conf.d/cloudstack.cnf
 
-systemctl restart mysql
+    systemctl restart mysql
 
-# Configurar MySQL para CloudStack
-mysql -u root << EOF
+    # Configurar MySQL para CloudStack
+    mysql -u root << EOF
 ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '1qazxsw2';
 FLUSH PRIVILEGES;
 EOF
 
-# Configurar CloudStack
-cloudstack-setup-databases ezzy:ezzy@localhost --deploy-as=root:1qazxsw2
-cloudstack-setup-management
+    # Configurar CloudStack
+    cloudstack-setup-databases ezzy:ezzy@localhost --deploy-as=root:1qazxsw2
+    cloudstack-setup-management
+fi
 
 # Configurar firewall
 ufw allow mysql
@@ -149,7 +182,6 @@ ufw allow proto tcp from any to any port 16509
 ufw allow proto tcp from any to any port 16514
 ufw allow proto tcp from any to any port 5900:6100
 ufw allow proto tcp from any to any port 49152:49216
-
 
 # Habilitar ssh
 # Configurar acceso SSH para root
@@ -172,14 +204,16 @@ else
     echo "No se pudo encontrar el servicio SSH. Por favor, reinicia el servicio manualmente."
 fi
 
-# Configurar NFS
-mkdir -p /export/primary /export/secondary
-echo "/export *(rw,async,no_root_squash,no_subtree_check)" >> /etc/exports
-apt install -y nfs-kernel-server
-systemctl restart nfs-kernel-server
-mkdir -p /mnt/primary /mnt/secondary
-mount -t nfs localhost:/export/primary /mnt/primary
-mount -t nfs localhost:/export/secondary /mnt/secondary
+# Configurar NFS (solo para instalación completa)
+if [ "$INSTALL_TYPE" = "full" ]; then
+    mkdir -p /export/primary /export/secondary
+    echo "/export *(rw,async,no_root_squash,no_subtree_check)" >> /etc/exports
+    apt install -y nfs-kernel-server
+    systemctl restart nfs-kernel-server
+    mkdir -p /mnt/primary /mnt/secondary
+    mount -t nfs localhost:/export/primary /mnt/primary
+    mount -t nfs localhost:/export/secondary /mnt/secondary
+fi
 
 # Instalar KVM y agente de CloudStack
 apt install -y qemu-kvm cloudstack-agent
@@ -215,7 +249,8 @@ echo "
 ###################################################################################
 "
 
-echo "
+if [ "$INSTALL_TYPE" = "full" ]; then
+    echo "
 ###################################################################################
 ####           Installation done. You can go to http://localhost:8080          ####
 ####           to access the panel.                                            ####
@@ -223,3 +258,11 @@ echo "
 ####           Password : password                                             ####
 ###################################################################################
 "
+else
+    echo "
+###################################################################################
+####           Host installation completed.                                    ####
+####           You can now add this host to your CloudStack management server. ####
+###################################################################################
+"
+fi
