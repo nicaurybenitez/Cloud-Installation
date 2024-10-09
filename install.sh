@@ -59,7 +59,7 @@ apt-get install -y openntpd openssh-server sudo vim htop tar intel-microcode bri
 
 
 GATEWAY=$(ip r | awk '/default/ {print $3}')
-IP=$(ip r | awk '/src/ {print $9}')
+IP=$(ip r | awk '/src/ {print $9; exit}')
 ADAPTER=$(ip link | awk -F: '$0 !~ "lo|vir|wl|^[^0-9]"{print $2;getline}')
 
 HOSTS_CONTENT="127.0.0.1\tlocalhost\n$IP\tcloud.ngi.local\tcloud"
